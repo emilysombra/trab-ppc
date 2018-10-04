@@ -36,7 +36,7 @@ def enviar_msg():
             sentido = '0'
             cliente.send(sentido.encode())
             carros_enviados += 1
-            print('Carro enviado (esquerda)')
+            print('(Client)Carro enviado (esquerda)')
 
         if(len(direita) > 0):
             direita.popleft()
@@ -51,17 +51,39 @@ def enviar_msg():
 
 def t_filas():
     print('(Fila)Thread que insere carros nas filas iniciada')
-    for i in range(100):
+    sentidos_disponiveis = [0, 1]  # 0: esquerda || 1: direita
+    qtd_esq = 0
+    qtd_dir = 0
+    while(True):
         carro = Carro()
-        # 1: direita || 0: esquerda
-        if(i % 2):
+        if(len(sentidos_disponiveis) == 0):
+            break
+        sentido = randint(0, len(sentidos_disponiveis) - 1)
+        sentido = sentidos_disponiveis[sentido]
+        if(sentido):
             direita.append(carro)
+            qtd_dir += 1
             print('(Fila)Carro inserido na fila direita')
+
+            if(qtd_dir >= 50):
+                try:
+                    sentidos_disponiveis.remove(1)
+                except ValueError:
+                    pass
         else:
             esquerda.append(carro)
+            qtd_esq += 1
             print('(Fila)Carro inserido na fila esquerda')
 
-        print('(Fila)Número de carros gerados: {}'.format(i + 1))
+            if(qtd_esq >= 50):
+                try:
+                    sentidos_disponiveis.remove(0)
+                except ValueError:
+                    pass
+
+        print('(Fila)Número de carros gerados:')
+        print('(Fila)Esquerda: {}'.format(qtd_esq))
+        print('(Fila)Direita: {}'.format(qtd_dir))
 
         # espera 2-6 segundos para gerar outro carro
         espera = randint(2, 6)

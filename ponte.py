@@ -24,7 +24,40 @@ class Ponte:
 esquerda = deque([])
 direita = deque([])
 ponte = Ponte()
-tempos_espera = []
+espera_esq = []
+espera_dir = []
+relogio_ponte = 0
+fim_programa = False
+
+
+# thread que calcula o tempo de utilização da ponte
+def tempo_ponte(cv_ponte):
+    global relogio_ponte
+    print('(Tempo)Medição do tempo iniciada')
+    while(True):
+        # espera até ter um carro na ponte
+        with(cv_ponte):
+            while(len(ponte.veiculos) == 0 and not fim_programa):
+                cv_ponte.wait()
+
+        # marca o momento que a ponte começa a ser utilizada
+        tempo_inicial = time.time()
+        print('(Tempo)Ponte sendo utilizada')
+
+        # espera até a ponte deixar de ser utilizada
+        with(cv_ponte):
+            while(len(ponte.veiculos) >= 1 and not fim_programa):
+                cv_ponte.wait()
+
+        # marca o momento que a ponte deixa de ser utilizada
+        # e incrementa o tempo total
+        tempo_fim = time.time() - tempo_inicial
+        relogio_ponte += tempo_fim
+        print('(Tempo)Ponte deixou de ser utilizada')
+
+        # condição de parada da thread
+        if(fim_programa):
+            break
 
 
 # servidor que recebe os carros
@@ -51,7 +84,11 @@ def recebe_msg(cv_fila):
 
         print('(Server)Carro recebido')
         print('(Server)Carros recebidos: {}'.format(carros_recebidos + 1))
+
+        # gera uma tupla com o carro e o tempo de chegada dele
         tupla = (Carro(), time.time())
+
+        # dependendo do sentido, adiciona-o na fila correspondente
         if(sentido):
             direita.append(tupla)
             carros_recebidos += 1
@@ -87,7 +124,6 @@ def t_ponte(cv_ponte, cv_fila):
         print('(Ponte)Sentido da ponte: {}'.format(direcao))
         # checa o sentido da ponte
         # entra no if caso seja direita, no else caso seja esquerda
-        # c
         if(ponte.sentido):
             with(cv_fila):
                 # espera haver um carro na fila da direita
@@ -97,7 +133,7 @@ def t_ponte(cv_ponte, cv_fila):
 
             carro, tempo = direita.popleft()  # remove carro da fila
             espera = time.time() - tempo
-            tempos_espera.append(espera)
+            espera_dir.append(espera)
         else:
             with(cv_fila):
                 # espera haver um carro na fila da esquerda
@@ -107,7 +143,7 @@ def t_ponte(cv_ponte, cv_fila):
 
             carro, tempo = esquerda.popleft()  # remove carro da fila
             espera = time.time() - tempo
-            tempos_espera.append(espera)
+            espera_esq.append(espera)
 
         # --- carro sai da fila nesse momento --- #
 
@@ -176,30 +212,54 @@ def remove_carros(cv_ponte):
             break
 
 
-def resultados():
+def resultados(total):
     print()
     print('Resultados:')
     print('Carros passados pela ponte: {}'.format(LIMITE_CARROS))
     print('Tempos de espera:')
-    print('Máximo: {}'.format(max(tempos_espera)))
-    print('Mínimo: {}'.format(min(tempos_espera)))
-    print('Média: {}'.format(media(tempos_espera)))
+    print('Esquerda:')
+    print('Máximo: {}'.format(max(espera_esq)))
+    print('Mínimo: {}'.format(min(espera_esq)))
+    print('Média: {}'.format(media(espera_esq)))
+    print('------')
+    print('Direita:')
+    print('Máximo: {}'.format(max(espera_dir)))
+    print('Mínimo: {}'.format(min(espera_dir)))
+    print('Média: {}'.format(media(espera_dir)))
+    print('------')
+    print('Tempo utilização da ponte: {}'.format(relogio_ponte))
+    print('Tempo total do programa: {}'.format(total))
 
 
 # código que será executado ao iniciar o programa
 def main():
+    total = time.time()
+    global fim_programa
     print('(Main)Programa iniciado')
+
     cv_ponte = Condition()
     cv_fila = Condition()
+
+    tempo = Thread(target=tempo_ponte, args=(cv_ponte, ))
+    tempo.start()
+
     recebimento = Thread(target=recebe_msg, args=(cv_fila, ))
     recebimento.start()
     ponte = Thread(target=t_ponte, args=(cv_ponte, cv_fila))
     ponte.start()
+
     remove = Thread(target=remove_carros, args=(cv_ponte, ))
     remove.start()
+
     ponte.join()
+    fim_programa = True
+    with(cv_ponte):
+        cv_ponte.notify_all()
+    tempo.join()
+
     print('(Main)Programa encerrado')
-    resultados()
+    total = time.time() - total
+    resultados(total)
 
 
 if(__name__ == '__main__'):
