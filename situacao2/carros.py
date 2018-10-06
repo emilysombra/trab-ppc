@@ -3,6 +3,7 @@ import time
 from threading import Thread
 from collections import deque
 import socket
+import pickle
 
 esquerda = deque([])
 direita = deque([])
@@ -26,27 +27,40 @@ class Caminhao(Veiculo):
 def enviar_msg():
     print('(Client)Cliente iniciado')
     carros_enviados = 0
+    caminhoes_enviados = 0
     cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     destino = ('localhost', 5000)
     cliente.connect(destino)
 
     while(True):
         print('(Client)Qtd de carros enviados: {}'.format(carros_enviados))
+        s = '(Client)Qtd de caminhoes enviados: {}'.format(caminhoes_enviados)
+        print(s)
         # espera haver um carro
         while(len(esquerda) == 0 and len(direita) == 0):
             pass
 
         if(len(esquerda) > 0):
-            esquerda.popleft()
-            sentido = '0'
-            cliente.send(sentido.encode())
+            veiculo = esquerda.popleft()
+            if(isinstance(veiculo, Carro)):
+                tipo = '0'
+            else:
+                tipo = '1'
+            tupla = (tipo, '0')
+            tupla = pickle.dumps(tupla)
+            cliente.send(tupla)
             carros_enviados += 1
             print('(Client)Carro enviado (esquerda)')
 
         if(len(direita) > 0):
-            direita.popleft()
-            sentido = '1'
-            cliente.send(sentido.encode())
+            veiculo = direita.popleft()
+            if(isinstance(veiculo, Carro)):
+                tipo = '0'
+            else:
+                tipo = '1'
+            tupla = (tipo, '1')
+            tupla = pickle.dumps(tupla)
+            cliente.send(tupla)
             carros_enviados += 1
             print('(Client)Carro enviado (direita)')
         if(carros_enviados >= 100):
