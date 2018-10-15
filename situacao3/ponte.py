@@ -1,6 +1,7 @@
 from threading import Thread
 from threading import Condition
 from collections import deque
+from random import choice
 from numpy import mean as media
 import time
 import socket
@@ -31,56 +32,34 @@ espera_esq = []
 espera_dir = []
 relogio_ponte = 0
 fim_programa = False
-reset = False
 total_veiculos = 0
 
 
-# checa condição para timeout
-def condicao_timeout(tempo):
-    flag = False
-    if(ponte.sentido == 1 and len(direita) == 0 and len(esquerda) > 0):
-        flag = True
-    elif(ponte.sentido == 0 and len(esquerda) == 0 and len(direita) > 0):
-        flag = True
-    return len(ponte.veiculos) == 0 and flag and tempo > 20
+def escolhe_carro():
+    veiculo = None
+    tempo = None
+    sentido = None
+    if(len(ponte.veiculos) > 0):
+        if(ponte.sentido == 1 and len(direita) > 0):
+            veiculo, tempo = direita.popleft()
+            sentido = 1
+        elif(ponte.sentido == 0 and len(esquerda) > 0):
+            veiculo, tempo = esquerda.popleft()
+            sentido = 0
+    else:
+        disponiveis = []
+        if(len(esquerda) > 0):
+            disponiveis.append(0)
+        elif(len(direita) > 0):
+            disponiveis.append(1)
 
+        sentido = choice(disponiveis)
+        if(sentido):
+            veiculo, tempo = direita.popleft()
+        else:
+            veiculo, tempo = esquerda.popleft()
 
-# thread que força a ponte a trocar de sentido
-def timeout(cv_ponte, cv_fila):
-    global reset
-    while(True):
-        # espera a ponte ficar vazia
-        while(len(ponte.veiculos) > 0 and not fim_programa):
-            with(cv_ponte):
-                cv_ponte.wait()
-
-        # não faz nada até ter + de 100 veiculos
-        if(total_veiculos <= 100):
-            continue
-
-        # caso o programa tenha acabado, encerra
-        if(fim_programa):
-            print('(Timeout)Timeout concluído')
-            break
-
-        # marca o momento que a ponte fica vazia
-        tempo_inicial = time.time()
-        print('(Timeout)Ponte vazia')
-
-        # espera haver condição para timeout
-        while(not condicao_timeout(time.time() - tempo_inicial)):
-            pass
-
-        # força a ponte a trocar de sentido
-        ponte.mudar_sentido()
-        reset = True
-        with(cv_fila):
-            cv_fila.notify_all()
-
-        # condição de parada
-        if(fim_programa):
-            print('(Timeout)Timeout concluído')
-            break
+    return veiculo, tempo, sentido
 
 
 # thread que calcula o tempo de utilização da ponte
@@ -187,23 +166,14 @@ def t_ponte(cv_ponte, cv_fila):
     qtd_veiculos = 0
     while(True):
         with(cv_fila):
-            # enquanto o sentido for direita e
-            # não houver carros à direita, espera
-            while(ponte.sentido == 1 and len(direita) == 0):
-                print('(Ponte)Esperando veiculo na fila direita')
-                cv_fila.wait()
+            while(len(direita) == 0 and len(esquerda) == 0):
+                print('(Ponte)Esperando haver carro em espera')
 
-            # enquanto o sentido for esquerda e
-            # não houver carros à esquerda, espera
-            while(ponte.sentido == 0 and len(esquerda) == 0):
-                print('(Ponte)Esperando veiculo na fila esquerda')
-                cv_fila.wait()
-
-        # caso haja um reset, reseta
-        if(reset):
-            reset = False
-            qtd_veiculos = 0
-            continue
+        # checa se a ponte possui carros
+        if(len(ponte.veiculos) > 0):
+            pass
+        else:
+            pass
 
         # checa o sentido da ponte e retira o veiculo da fila correspondente
         if(ponte.sentido):
@@ -256,18 +226,6 @@ def t_ponte(cv_ponte, cv_fila):
                     cv_ponte.wait()
         else:
             time.sleep(2)
-
-        # caso já tenha passado 5 veiculos num mesmo sentido,
-        # espera a ponte esvaziar e troca o sentido
-        if(qtd_veiculos >= 5):
-            with(cv_ponte):
-                while(len(ponte.veiculos) > 0):
-                    print('(Ponte)Esperando ponte esvaziar')
-                    cv_ponte.notify_all()
-                    cv_ponte.wait()
-            ponte.mudar_sentido()
-            print('(Ponte)Ponte mudou de sentido')
-            qtd_veiculos = 0
 
         # caso 106 veiculos ja tenham passado pela ponte, encerra a thread
         if(total_veiculos >= LIMITE_VEICULOS):
@@ -347,16 +305,12 @@ def main():
     remove = Thread(target=remove_carros, args=(cv_ponte, ))
     remove.start()
 
-    t_timeout = Thread(target=timeout, args=(cv_ponte, cv_fila))
-    t_timeout.start()
-
     ponte.join()
     remove.join()
     fim_programa = True
     with(cv_ponte):
         cv_ponte.notify_all()
     tempo.join()
-    t_timeout.join()
 
     print('(Main)Programa encerrado')
     total = time.time() - total
