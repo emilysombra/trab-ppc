@@ -6,80 +6,72 @@ from numpy import mean as media
 import time
 import socket
 import pickle
-from carros import Carro
-from carros import Caminhao
+from aux import Carro
+from aux import Caminhao
+from aux import Pont
+# from aux import Pont
 
 # constante que limita os carros
-LIMITE_VEICULOS = 106
-
-
-# classe ponte
-# 0: esquerda || 1: direita
-class Ponte:
-    def __init__(self):
-        self.veiculos = deque([])
-        self.sentido = 0
-
-    def mudar_sentido(self):
-        self.sentido = 1 - self.sentido
+LIMITE_VEHICULES = 106
 
 
 # variaveis globais
-esquerda = deque([])
-direita = deque([])
-ponte = Ponte()
-espera_esq = []
-espera_dir = []
+gauche = deque([])
+droite = deque([])
+pont = Pont()
+attendre_gauche = []
+attendre_droite = []
 relogio_ponte = 0
 fim_programa = False
 total_veiculos = 0
 
 
+# função para tirar um carro da fila
 def escolhe_carro():
-    veiculo = None
+    vehicule = None
     tempo = None
-    sentido = None
-    if(len(ponte.veiculos) > 0):
-        if(ponte.sentido == 1 and len(direita) > 0):
-            veiculo, tempo = direita.popleft()
-            sentido = 1
-        elif(ponte.sentido == 0 and len(esquerda) > 0):
-            veiculo, tempo = esquerda.popleft()
-            sentido = 0
+    direction = None
+    if(len(pont.vehicules) > 0):
+        if(pont.direction == 1 and len(droite) > 0):
+            vehicule, tempo = droite.popleft()
+            direction = 1
+        elif(pont.direction == 0 and len(gauche) > 0):
+            vehicule, tempo = gauche.popleft()
+            direction = 0
     else:
         disponiveis = []
-        if(len(esquerda) > 0):
+        if(len(gauche) > 0):
             disponiveis.append(0)
-        elif(len(direita) > 0):
+        elif(len(droite) > 0):
             disponiveis.append(1)
 
-        sentido = choice(disponiveis)
-        if(sentido):
-            veiculo, tempo = direita.popleft()
+        direction = choice(disponiveis)
+        if(direction):
+            vehicule, tempo = droite.popleft()
         else:
-            veiculo, tempo = esquerda.popleft()
+            vehicule, tempo = gauche.popleft()
 
-    return veiculo, tempo, sentido
+    return vehicule, tempo, direction
 
 
 # thread que calcula o tempo de utilização da ponte
-def tempo_ponte(cv_ponte):
+def tempo_ponte(cv_pont):
     global relogio_ponte
     print('(Tempo)Medição do tempo iniciada')
     while(True):
         # espera até ter um carro na ponte
-        with(cv_ponte):
-            while(len(ponte.veiculos) == 0 and not fim_programa):
-                cv_ponte.wait()
+        with(cv_pont):
+            while(len(pont.vehicules) == 0 and not fim_programa):
+                cv_pont.wait()
 
         # marca o momento que a ponte começa a ser utilizada
         tempo_inicial = time.time()
         print('(Tempo)Ponte sendo utilizada')
 
         # espera até a ponte deixar de ser utilizada
-        with(cv_ponte):
-            while(len(ponte.veiculos) >= 1 and not fim_programa):
-                cv_ponte.wait()
+        with(cv_pont):
+            while(len(pont.vehicules) >= 1 and not fim_programa):
+                cv_pont.wait()
 
         # marca o momento que a ponte deixa de ser utilizada
         # e incrementa o tempo total
@@ -118,9 +110,9 @@ def recebe_msg(cv_fila):
                 time.sleep(1)
                 continue
             tipo = int(msg[0])
-            sentido = int(msg[1])
+            direction = int(msg[1])
             print('-------------')
-            print('msg: {} | tipo: {}, sentido: {}'.format(msg, tipo, sentido))
+            print('msg=> tipo: {}, sentido: {}'.format(msg, tipo, direction))
             print('-------------')
             if(msg):
                 break
@@ -137,130 +129,137 @@ def recebe_msg(cv_fila):
         tupla = (veiculo, time.time())
 
         # dependendo do sentido, adiciona-o na fila correspondente
-        if(sentido):
-            direita.append(tupla)
+        if(direction):
+            droite.append(tupla)
             veiculos_recebidos += 1
             print('(Server)Carro inserido na fila direita')
-            print('(Server)Carros na fila direita: {}'.format(len(direita)))
+            print('(Server)Carros na fila direita: {}'.format(len(droite)))
         else:
-            esquerda.append(tupla)
+            gauche.append(tupla)
             print('(Server)Carro inserido na fila esquerda')
             veiculos_recebidos += 1
-            print('(Server)Carros na fila esquerda: {}'.format(len(esquerda)))
+            print('(Server)Carros na fila esquerda: {}'.format(len(gauche)))
 
         # acorda a thread da ponte sempre que chegar um carro
         with(cv_fila):
             cv_fila.notify_all()
 
-        if(veiculos_recebidos >= LIMITE_VEICULOS):
+        if(veiculos_recebidos >= LIMITE_VEHICULES):
             connect.close()
             print('(Server)Servidor desligado')
             break
 
 
 # linha de execução da thread da ponte
-def t_ponte(cv_ponte, cv_fila):
+def t_ponte(cv_pont, cv_fila):
     global reset
     global total_veiculos
     print('(Ponte)Thread Ponte iniciada')
-    qtd_veiculos = 0
     while(True):
         with(cv_fila):
-            while(len(direita) == 0 and len(esquerda) == 0):
+            while(len(droite) == 0 and len(gauche) == 0):
                 print('(Ponte)Esperando haver carro em espera')
+                cv_fila.wait()
 
-        # checa se a ponte possui carros
-        if(len(ponte.veiculos) > 0):
-            pass
-        else:
-            pass
+        # escolhe um carro entre as filas
+        # tenta retirar um veículo de uma fila
+        veiculo, tempo, direction = escolhe_carro()
+        # caso não haja um veiculo, retorna para o começo do while
+        if(not veiculo):
+            continue
 
-        # checa o sentido da ponte e retira o veiculo da fila correspondente
-        if(ponte.sentido):
+        # veículo sai da fila nesse momento
+
+        # seta o sentido da ponte para o do carro escolhido
+        # em seguida, imprime o direction
+        pont.set_direction(direction)
+        if(pont.direction):
             print('(Ponte)Sentido da ponte: direita')
-            veiculo, tempo = direita.popleft()
         else:
             print('(Ponte)Sentido da ponte: esquerda')
-            veiculo, tempo = esquerda.popleft()
 
         # checa se é um caminhão
         if(isinstance(veiculo, Caminhao)):
             print('(Ponte)Veículo é um caminhão')
             print('(Ponte)Esperando ponte esvaziar')
             # espera a ponte esvaziar
-            with(cv_ponte):
-                while(len(ponte.veiculos) > 0):
-                    cv_ponte.notify_all()
-                    cv_ponte.wait()
+            with(cv_pont):
+                while(len(pont.vehicules) > 0):
+                    cv_pont.notify_all()
+                    cv_pont.wait()
 
                 print('(Ponte)Ponte esvaziou')
 
         # armazena o tempo de espera na lista correspondente
         espera = time.time() - tempo
-        if(ponte.sentido):
-            espera_dir.append(espera)
+        if(pont.direction):
+            attendre_droite.append(espera)
         else:
-            espera_esq.append(espera)
+            attendre_gauche.append(espera)
 
         # tupla com veiculo e tempo de chegada
         tupla = (veiculo, time.time())
-        ponte.veiculos.append(tupla)
-        # notifica que há um carro na ponte
-        with(cv_ponte):
-            cv_ponte.notify_all()
+        # insere a tupla na ponte
+        pont.vehicules.append(tupla)
 
-        qtd_veiculos += 1
+        # veículo entra na ponte nesse momento
+
+        print('(Ponte)Veículo entrou na ponte')
+
+        # notifica que há um carro na ponte
+        with(cv_pont):
+            cv_pont.notify_all()
+
         total_veiculos += 1
-        print('(Ponte)Qtd veiculos na ponte: {}'.format(len(ponte.veiculos)))
-        print('(Ponte)Qtd veiculos no msm sentido: {}'.format(qtd_veiculos))
+        print('(Ponte)Qtd veiculos na ponte: {}'.format(len(pont.vehicules)))
         print('(Ponte)Total de veiculos: {}'.format(total_veiculos))
 
         # espera um tempo para adicionar outro veiculo
         # se caminhão: espera caminhão passar
         # se carro: espera 2 segundos
         if(isinstance(veiculo, Caminhao)):
-            with(cv_ponte):
-                while(len(ponte.veiculos) > 0):
+            with(cv_pont):
+                while(len(pont.vehicules) > 0):
                     print('(Ponte)Esperando caminhão passar')
-                    cv_ponte.notify_all()
-                    cv_ponte.wait()
+                    cv_pont.notify_all()
+                    cv_pont.wait()
         else:
             time.sleep(2)
 
         # caso 106 veiculos ja tenham passado pela ponte, encerra a thread
-        if(total_veiculos >= LIMITE_VEICULOS):
+        if(total_veiculos >= LIMITE_VEHICULES):
             print('(Ponte)Ponte concluída')
             break
 
 
 # thread que controla a passagem dos veiculos na ponte
-def remove_carros(cv_ponte):
+def remove_carros(cv_pont):
     veiculos_removidos = 0  # contador de veiculos removidos
     while(True):
         # caso a ponte esteja vazia, dorme
         # quando a ponte possuir um veículo, é acordada
-        with(cv_ponte):
-            while(len(ponte.veiculos) == 0):
+        with(cv_pont):
+            while(len(pont.vehicules) == 0):
                 print('(Removedora)Ponte vazia')
                 # antes de dormir, notifica que a ponte está vazia
-                cv_ponte.notify_all()
-                cv_ponte.wait()
+                cv_pont.notify_all()
+                cv_pont.wait()
             print('(Removedora)Há um veículo na ponte')
 
         # checa o tempo do primeiro veículo na ponte
         # caso já tenha passado o tempo, o remove
-        tempo = ponte.veiculos[0][0].tempo_travessia
-        while((time.time() - ponte.veiculos[0][1]) < tempo):
+        tempo = pont.vehicules[0][0].tempo_travessia
+        while((time.time() - pont.vehicules[0][1]) < tempo):
             pass
 
         # remove um veículo da ponte e notifica
-        ponte.veiculos.popleft()
+        pont.vehicules.popleft()
         veiculos_removidos += 1
-        with(cv_ponte):
-            cv_ponte.notify_all()
+        with(cv_pont):
+            cv_pont.notify_all()
         print('(Removedora)Carro removido da ponte')
         # caso já tenha removido 106 veiculos, para
-        if(veiculos_removidos >= LIMITE_VEICULOS):
+        if(veiculos_removidos >= LIMITE_VEHICULES):
             print('(Removedora)Removedora concluída')
             break
 
@@ -268,17 +267,17 @@ def remove_carros(cv_ponte):
 def resultados(total):
     print()
     print('Resultados:')
-    print('Veículos passados pela ponte: {}'.format(LIMITE_VEICULOS))
+    print('Veículos passados pela ponte: {}'.format(LIMITE_VEHICULES))
     print('Tempos de espera:')
     print('Esquerda:')
-    print('Máximo: {}'.format(max(espera_esq)))
-    print('Mínimo: {}'.format(min(espera_esq)))
-    print('Média: {}'.format(media(espera_esq)))
+    print('Máximo: {}'.format(max(attendre_gauche)))
+    print('Mínimo: {}'.format(min(attendre_gauche)))
+    print('Média: {}'.format(media(attendre_gauche)))
     print('------')
     print('Direita:')
-    print('Máximo: {}'.format(max(espera_dir)))
-    print('Mínimo: {}'.format(min(espera_dir)))
-    print('Média: {}'.format(media(espera_dir)))
+    print('Máximo: {}'.format(max(attendre_droite)))
+    print('Mínimo: {}'.format(min(attendre_droite)))
+    print('Média: {}'.format(media(attendre_droite)))
     print('------')
     print('Tempo utilização da ponte: {}'.format(relogio_ponte))
     print('Tempo total do programa: {}'.format(total))
@@ -290,26 +289,26 @@ def main():
     global fim_programa
     print('(Main)Programa iniciado')
 
-    cv_ponte = Condition()
+    cv_pont = Condition()
     cv_fila = Condition()
 
-    tempo = Thread(target=tempo_ponte, args=(cv_ponte, ))
+    tempo = Thread(target=tempo_ponte, args=(cv_pont, ))
     tempo.start()
 
     recebimento = Thread(target=recebe_msg, args=(cv_fila, ))
     recebimento.start()
 
-    ponte = Thread(target=t_ponte, args=(cv_ponte, cv_fila))
+    ponte = Thread(target=t_ponte, args=(cv_pont, cv_fila))
     ponte.start()
 
-    remove = Thread(target=remove_carros, args=(cv_ponte, ))
+    remove = Thread(target=remove_carros, args=(cv_pont, ))
     remove.start()
 
     ponte.join()
     remove.join()
     fim_programa = True
-    with(cv_ponte):
-        cv_ponte.notify_all()
+    with(cv_pont):
+        cv_pont.notify_all()
     tempo.join()
 
     print('(Main)Programa encerrado')

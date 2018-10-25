@@ -10,21 +10,6 @@ esquerda = deque([])
 direita = deque([])
 
 
-class Veiculo:
-    def __init__(self, tempo):
-        self.tempo_travessia = tempo
-
-
-class Carro(Veiculo):
-    def __init__(self):
-        super().__init__(10)
-
-
-class Caminhao(Veiculo):
-    def __init__(self):
-        super().__init__(20)
-
-
 def enviar_msg():
     print('(Client)Cliente iniciado')
     carros_enviados = 0
