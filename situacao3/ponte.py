@@ -1,15 +1,11 @@
-from threading import Thread
-from threading import Condition
+from aux import (Carro, Caminhao, Pont)
+from threading import (Thread, Condition)
 from collections import deque
 from random import choice
 from numpy import mean as media
 import time
 import socket
 import pickle
-from aux import Carro
-from aux import Caminhao
-from aux import Pont
-# from aux import Pont
 
 # constante que limita os carros
 LIMITE_VEHICULES = 106

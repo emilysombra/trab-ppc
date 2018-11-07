@@ -1,5 +1,4 @@
-from random import randint
-from random import choice
+from random import (randint, choice)
 import time
 from threading import Thread
 from collections import deque
